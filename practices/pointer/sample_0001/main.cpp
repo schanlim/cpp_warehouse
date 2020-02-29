@@ -24,6 +24,7 @@ public:
 int main(int, char**) {
     Car *c = new Car;
     c->Go();
+    delete c;
 
     Ptr<Car> p = new Car; // Ptr p( new Car ) 로 생각하세요.
     p->Go();// ( p.operator->())Go() 의 모양이지만

@@ -17,15 +17,24 @@ public:
 class MockCompositorController {
 public:
     MockCompositorController() {
-        std::cout << __func__ << std::this_thread::get_id() << "\n";
         th = std::thread(run, this);
+        std::cout << __func__ << std::this_thread::get_id() << "\n";
         alive = true;
         ready = false;
-    }
+ 
+        {
+            std::lock_guard<std::mutex> lock(m);
+            ready = true;
+            std::cout << "main() signals data ready for processing\n";
+        }
+        cv.notify_one();
+   }
 
     ~MockCompositorController() {
         std::cout << __func__ << std::this_thread::get_id() << "\n";
         alive = false;
+        process = true;
+        cv.notify_one(); // wakeup thread for destroying it.
         th.join();
     }
 
@@ -35,21 +44,45 @@ private:
     std::condition_variable cv;
     bool alive;
     bool ready;
+    bool process;
 
     MockCompositor *mc;
 
     static void *run(void *data) {
         MockCompositorController *mcc = static_cast<MockCompositorController *>(data);
         MockCompositor mc;
+        int cnt = 1;
+
         std::cout << __func__ << std::this_thread::get_id() << "\n";
 
         mcc->mc = &mc;
 
-        while (mcc->alive) {
-            std::cout << __func__ << std::this_thread::get_id() << "\n";
-            
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::cout << __func__ << cnt++ << "\n";
+
+        {
+            // wait until main() sends data
+            std::unique_lock<std::mutex> lock(mcc->m);
+            mcc->cv.wait(lock, [mcc]{return mcc->ready;});
         }
+
+        std::cout << __func__ << cnt++ << "\n";
+
+        while (mcc->alive) {
+            {
+                std::cout << __func__ << cnt++ << "\n";
+                std::unique_lock<std::mutex> lock(mcc->m);
+                mcc->cv.wait(lock, [mcc]{return mcc->process;});
+            }
+
+            mcc->process = false;
+            
+            std::cout << __func__ << cnt++ << "\n";
+ 
+            std::cout << __func__ << std::this_thread::get_id() << "\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            std::cout << __func__ << cnt++ << "\n";
+       }
     }
 };
 
